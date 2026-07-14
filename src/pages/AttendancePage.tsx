@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { loadFaceDetector } from "../services/faceDetector";
 
 type CameraStatus =
   | "idle"
@@ -32,7 +33,10 @@ export default function AttendancePage() {
   async function startCamera() {
     try {
       setCameraStatus("starting");
-      setMessage("Meminta izin kamera...");
+      setMessage("Memuat model deteksi wajah...");
+await loadFaceDetector();
+
+setMessage("Model siap. Meminta izin kamera...");
 
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error(
