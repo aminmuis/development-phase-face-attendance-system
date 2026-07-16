@@ -25,3 +25,14 @@ export async function loadFaceDetector(): Promise<FaceDetector> {
 
   return faceDetector;
 }
+
+export async function detectFaces(
+  video: HTMLVideoElement,
+) {
+  const detector = await loadFaceDetector();
+
+  return detector.detectForVideo(
+    video,
+    performance.now(),
+  );
+}

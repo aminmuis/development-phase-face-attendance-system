@@ -4,7 +4,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { loadFaceDetector } from "../services/faceDetector";
+import {
+  detectFaces,
+  loadFaceDetector,
+} from "../services/faceDetector";
 
 type CameraStatus =
   | "idle"
@@ -16,6 +19,7 @@ export default function AttendancePage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const detectionIntervalRef = useRef<number | null>(null);
 
   const [cameraStatus, setCameraStatus] =
     useState<CameraStatus>("idle");
@@ -29,6 +33,64 @@ export default function AttendancePage() {
 
   const cameraActive = cameraStatus === "active";
   const cameraStarting = cameraStatus === "starting";
+
+function stopFaceDetection() {
+
+ if (detectionIntervalRef.current !== null) {
+
+ window.clearInterval(detectionIntervalRef.current);
+
+ detectionIntervalRef.current = null;
+
+ }
+
+}
+
+function startFaceDetection() {
+
+ stopFaceDetection();
+
+ detectionIntervalRef.current = window.setInterval(async () => {
+
+ const video = videoRef.current;
+
+ if (!video || video.readyState < 2) {
+
+ return;
+
+ }
+
+ try {
+
+ const result = await detectFaces(video);
+
+ const faceCount = result.detections.length;
+
+ if (faceCount === 0) {
+
+ setMessage("Mencari wajah...");
+
+ } else if (faceCount === 1) {
+
+ setMessage("Satu wajah terdeteksi.");
+
+ } else {
+
+ setMessage(faceCount + " wajah terdeteksi.");
+
+ }
+
+ } catch (error) {
+
+ console.error("Automatic face detection error:", error);
+
+ setMessage("Deteksi wajah mengalami masalah.");
+
+ }
+
+ }, 500);
+
+}
 
   async function startCamera() {
     try {
@@ -75,6 +137,7 @@ setMessage("Model siap. Meminta izin kamera...");
 
       setCameraStatus("active");
       setMessage("Kamera berhasil dinyalakan.");
+      startFaceDetection();
     } catch (error: unknown) {
       console.error("Camera error:", error);
 
@@ -127,6 +190,7 @@ setMessage("Model siap. Meminta izin kamera...");
   }
 
   function stopCamera() {
+    stopFaceDetection();
     streamRef.current
       ?.getTracks()
       .forEach((track) => {
@@ -209,6 +273,37 @@ setCapturedImage(imageData);
     setMessage("Gambar berhasil diambil.");
   }
 
+async function testFaceDetection() {
+  const video = videoRef.current;
+
+  if (!video || !cameraActive) {
+    setMessage("Nyalakan kamera terlebih dahulu.");
+    return;
+  }
+
+  try {
+    setMessage("Memeriksa wajah...");
+
+    const result = await detectFaces(video);
+    const faceCount = result.detections.length;
+
+    if (faceCount === 0) {
+      setMessage("Wajah belum terdeteksi.");
+      return;
+    }
+
+    if (faceCount === 1) {
+      setMessage("Satu wajah terdeteksi.");
+      return;
+    }
+
+    setMessage(`${faceCount} wajah terdeteksi.`);
+  } catch (error) {
+    console.error("Face detection error:", error);
+    setMessage("Deteksi wajah gagal dijalankan.");
+  }
+}
+
   function deleteCapturedImage() {
     setCapturedImage(null);
     setMessage("Hasil gambar telah dihapus.");
@@ -216,6 +311,7 @@ setCapturedImage(imageData);
 
   useEffect(() => {
     return () => {
+      stopFaceDetection();
       streamRef.current?.getTracks().forEach((track) => {
         track.stop();
       });
@@ -311,6 +407,14 @@ setCapturedImage(imageData);
                 >
                   Ambil Gambar
                 </button>
+
+                <button
+  type="button"
+  className="button button-secondary"
+  onClick={testFaceDetection}
+>
+  Tes Deteksi Wajah
+</button>
 
                 <button
                   type="button"
