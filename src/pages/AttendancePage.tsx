@@ -20,6 +20,9 @@ export default function AttendancePage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectionIntervalRef = useRef<number | null>(null);
+  const stableDetectionCountRef = useRef(0);
+const faceCapturedRef = useRef(false);
+const detectionBusyRef = useRef(false);
 
   const [cameraStatus, setCameraStatus] =
     useState<CameraStatus>("idle");
@@ -47,49 +50,82 @@ function stopFaceDetection() {
 }
 
 function startFaceDetection() {
+  stopFaceDetection();
 
- stopFaceDetection();
+  stableDetectionCountRef.current = 0;
+  faceCapturedRef.current = false;
+  detectionBusyRef.current = false;
 
- detectionIntervalRef.current = window.setInterval(async () => {
+  detectionIntervalRef.current = window.setInterval(async () => {
+    const video = videoRef.current;
 
- const video = videoRef.current;
+    if (!video || video.readyState < 2) {
+      return;
+    }
 
- if (!video || video.readyState < 2) {
+    if (detectionBusyRef.current) {
+      return;
+    }
 
- return;
+    detectionBusyRef.current = true;
 
- }
+    try {
+      const result = await detectFaces(video);
+      const faceCount = result.detections.length;
 
- try {
+      if (faceCount === 0) {
+        stableDetectionCountRef.current = 0;
 
- const result = await detectFaces(video);
+        if (faceCapturedRef.current) {
+          faceCapturedRef.current = false;
+        }
 
- const faceCount = result.detections.length;
+        setMessage("Mencari wajah...");
+        return;
+      }
 
- if (faceCount === 0) {
+      if (faceCount > 1) {
+        stableDetectionCountRef.current = 0;
+        setMessage("Pastikan hanya satu wajah di depan kamera.");
+        return;
+      }
 
- setMessage("Mencari wajah...");
+      if (faceCapturedRef.current) {
+        setMessage(
+          "Gambar sudah diambil. Silakan keluar dari area kamera.",
+        );
+        return;
+      }
 
- } else if (faceCount === 1) {
+      stableDetectionCountRef.current += 1;
 
- setMessage("Satu wajah terdeteksi.");
+      const progress = stableDetectionCountRef.current;
 
- } else {
+      setMessage(
+        `Menstabilkan wajah ${progress}/3...`,
+      );
 
- setMessage(faceCount + " wajah terdeteksi.");
+      if (progress >= 3) {
+        captureImage();
 
- }
+        faceCapturedRef.current = true;
+        stableDetectionCountRef.current = 0;
 
- } catch (error) {
+        setMessage(
+          "Wajah stabil. Gambar diambil otomatis.",
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Automatic face detection error:",
+        error,
+      );
 
- console.error("Automatic face detection error:", error);
-
- setMessage("Deteksi wajah mengalami masalah.");
-
- }
-
- }, 500);
-
+      setMessage("Deteksi wajah mengalami masalah.");
+    } finally {
+      detectionBusyRef.current = false;
+    }
+  }, 500);
 }
 
   async function startCamera() {
@@ -191,6 +227,9 @@ setMessage("Model siap. Meminta izin kamera...");
 
   function stopCamera() {
     stopFaceDetection();
+    stableDetectionCountRef.current = 0;
+faceCapturedRef.current = false;
+detectionBusyRef.current = false;
     streamRef.current
       ?.getTracks()
       .forEach((track) => {
@@ -214,13 +253,6 @@ setMessage("Model siap. Meminta izin kamera...");
     if (!video || !canvas) {
       setMessage(
         "Elemen kamera belum tersedia.",
-      );
-      return;
-    }
-
-    if (!cameraActive) {
-      setMessage(
-        "Nyalakan kamera sebelum mengambil gambar.",
       );
       return;
     }
